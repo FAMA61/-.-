@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أدوات ضغط الصور والفيديو</title>
+<style>
+body{font-family:system-ui,Tahoma,sans-serif;background:#f4f6fb;margin:0;padding:16px;color:#222}
+.card{max-width:480px;margin:20px auto;background:#fff;border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+h1{font-size:1.3rem;text-align:center;margin-top:0}
+h2{font-size:1.15rem;text-align:center;margin-top:0}
+.pick{display:block;text-align:center;padding:14px;background:#7a8cff;color:#fff;border-radius:10px;font-size:1rem;cursor:pointer}
+input[type=file]{display:block;width:100%;margin:10px 0;font-size:.95rem}
+.row{margin:14px 0}
+.presets button{margin:4px;padding:8px 12px;border:1px solid #7a8cff;background:#fff;border-radius:8px;cursor:pointer;font-size:.95rem}
+.presets button.active{background:#7a8cff;color:#fff}
+input[type=number]{width:100px;padding:8px;font-size:1rem;border:1px solid #ccc;border-radius:8px}
+button.main{width:100%;padding:12px;background:#4a5be0;color:#fff;border:0;border-radius:10px;font-size:1rem;cursor:pointer}
+button.main:disabled{background:#aaa;cursor:not-allowed}
+.info{font-size:.95rem;line-height:1.8;margin-top:12px;min-height:1.8em}
+.err{color:#c0392b;font-weight:bold}
+img#preview, video#vpreview{max-width:100%;border-radius:10px;margin-top:10px}
+img#preview[hidden], video#vpreview[hidden]{display:none}
+a.dl{display:block;text-align:center;margin-top:10px;background:#2bb673;color:#fff;padding:12px;border-radius:10px;text-decoration:none}
+a.dl[hidden]{display:none}
+.note{font-size:.8rem;color:#777;text-align:center;margin-top:16px;line-height:1.6}
+hr{border:0;border-top:2px solid #eee;margin:24px 0}
+</style>
+</head>
+<body>
+
+<!-- ========== القسم الأول: ضغط الصور ========== -->
+<div class="card">
+  <h1>ضغط الصورة لحجم محدد</h1>
+
+  <label class="pick" for="file">📷 اختر صورة من هاتفك</label>
+  <input type="file" id="file" accept="image/*">
+
+  <div class="row">
+    <div>الحجم المطلوب (كيلوبايت):</div>
+    <div class="presets" id="presets">
+      <button data-kb="50">50 KB</button>
+      <button data-kb="100">100 KB</button>
+      <button data-kb="200" class="active">200 KB</button>
+      <button data-kb="500">500 KB</button>
+    </div>
+    <div style="margin-top:8px">
+      أو حجم مخصص: <input type="number" id="custom" min="5" max="5000" placeholder="مثلاً 150">
+    </div>
+  </div>
+
+  <button class="main" id="go" disabled>ضغط الصورة</button>
+
+  <div id="info" class="info">الخطوة 1: اختر صورة من الزر الأزرق</div>
+  <img id="preview" hidden alt="">
+  <a class="dl" id="dl" hidden download>تحميل الصورة</a>
+</div>
+
+<!-- ========== القسم الثاني: ضغط الفيديو ========== -->
+<div class="card">
+  <h2>ضغط الفيديو</h2>
+
+  <label class="pick" for="vfile">🎬 اختر فيديو من هاتفك</label>
+  <input type="file" id="vfile" accept="video/*">
+
+  <div class="row">
+    <div>الحجم المطلوب بالميغابايت (من 25 إلى 3072):</div>
+    <div class="presets" id="vpresets">
+      <button data-mb="25">25 MB</button>
+      <button data-mb="100" class="active">100 MB</button>
+      <button data-mb="500">500 MB</button>
+    </div>
+    <div style="margin-top:8px">
+      أو حجم مخصص: <input type="number" id="vtarget" min="25" max="3072" value="100">
+    </div>
+  </div>
+
+  <button class="main" id="vgo" disabled>ضغط الفيديو</button>
+
+  <div id="vinfo" class="info">الخطوة 1: اختر فيديو من الزر الأزرق</div>
+  <video id="vpreview" controls hidden></video>
+  <a class="dl" id="vdl" hidden download>تحميل الفيديو</a>
+
+  <div class="note">
+    ضغط الفيديو يتم داخل هاتفك، لذلك يستغرق وقتاً طويلاً وقد يفشل مع الملفات الكبيرة جداً.
+    يُنصح بالبدء بفيديو أقل من 500 MB. الحد 3 GB هو أقصى حجم للملف الذي تقبله الأداة.
+  </div>
+</div>
+
+<script>
+/* ---------- القسم الأول: الصور ---------- */
+let sourceImg = null, sourceName = "image", targetKB = 200;
+
+const fileInput = document.getElementById("file");
+const go = document.getElementById("go");
+const info = document.getElementById("info");
+const preview = document.getElementById("preview");
+const dl = document.getElementById("dl");
+const custom = document.getElementById("custom");
+
+function showError(msg) {
+  info.innerHTML = `<span class="err">${msg}</span>`;
+}
+
+document.querySelectorAll("#presets button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#presets button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    targetKB = +btn.dataset.kb;
+    custom.value = "";
+  };
+});
+
+custom.oninput = () => {
+  const v = +custom.value;
+  if (v >= 5) {
+    targetKB = v;
+    document.querySelectorAll("#presets button").forEach(b => b.classList.remove("active"));
+  }
+};
+
+function loadFile(f) {
+  if (!f) return;
+  if (!f.type.startsWith("image/")) {
+    showError("الملف المختار ليس صورة. اختر ملف JPG أو PNG أو WebP.");
+    return;
+  }
+  sourceName = f.name.replace(/\.[^.]+$/, "");
+  info.textContent = "جارٍ تحميل الصورة...";
+  const img = new Image();
+  img.onload = () => {
+    sourceImg = img;
+    info.innerHTML = `الأبعاد الأصلية: ${img.width} × ${img.height}<br>الحجم الأصلي: ${(f.size / 1024).toFixed(1)} KB<br>الخطوة 2: اضغط زر "ضغط الصورة"`;
+    go.disabled = false;
+  };
+  img.onerror = () => showError("تعذّر فتح هذه الصورة. جرّب صورة أخرى.");
+  img.src = URL.createObjectURL(f);
+}
+
+fileInput.addEventListener("change", e => loadFile(e.target.files[0]));
+
+function downscale(img, maxSide) {
+  const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(img.width * s));
+  canvas.height = Math.max(1, Math.round(img.height * s));
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function toBlob(canvas, quality) {
+  return new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
+}
+
+async function compress(baseCanvas, maxBytes) {
+  let canvas = baseCanvas;
+  let best = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    let lo = 0.1, hi = 0.92, found = null;
+    for (let i = 0; i < 6; i++) {
+      const q = (lo + hi) / 2;
+      const blob = await toBlob(canvas, q);
+      if (!blob) break;
+      best = best && best.size < blob.size ? best : blob;
+      if (blob.size <= maxBytes) { found = blob; lo = q; }
+      else hi = q;
+    }
+    if (found) return { blob: found, ok: true };
+
+    const next = document.createElement("canvas");
+    next.width = Math.max(1, Math.round(canvas.width * 0.8));
+    next.height = Math.max(1, Math.round(canvas.height * 0.8));
+    next.getContext("2d").drawImage(canvas, 0, 0, next.width, next.height);
+    canvas = next;
+    info.textContent = `جارٍ الضغط... المحاولة ${attempt + 2}`;
+  }
+  const last = await toBlob(canvas, 0.1);
+  return { blob: last || best, ok: false };
+}
+
+go.onclick = async () => {
+  if (!sourceImg) return;
+  go.disabled = true;
+  info.textContent = "جارٍ الضغط... انتظر قليلاً";
+  try {
+    const maxBytes = targetKB * 1024;
+    const base = downscale(sourceImg, 1200);
+    const { blob, ok } = await compress(base, maxBytes);
+    if (!blob) throw new Error("no blob");
+    const url = URL.createObjectURL(blob);
+    const kb = (blob.size / 1024).toFixed(1);
+    info.innerHTML = `الحجم الناتج: ${kb} KB ${ok ? "✅" : "⚠️ تعذّر الوصول للحجم المطلوب بالكامل"}<br>الصيغة: JPG`;
+    preview.src = url;
+    preview.hidden = false;
+    dl.href = url;
+    dl.download = sourceName + "-" + targetKB + "kb.jpg";
+    dl.hidden = false;
+  } catch (err) {
+    showError("حدث خطأ أثناء الضغط. جرّب صورة أصغر أو حجماً آخر.");
+  } finally {
+    go.disabled = false;
+  }
+};
+
+/* ---------- القسم الثاني: الفيديو ---------- */
+const MAX_INPUT = 3 * 1024 * 1024 * 1024; // 3 GB
+const vfile = document.getElementById("vfile");
+const vgo = document.getElementById("vgo");
+const vinfo = document.getElementById("vinfo");
+const vpreview = document.getElementById("vpreview");
+const vdl = document.getElementById("vdl");
+const vtarget = document.getElementById("vtarget");
+
+let videoFile = null, videoName = "video";
+let ffmpegInstance = null;
+
+function vShowError(msg) {
+  vinfo.innerHTML = `<span class="err">${msg}</span>`;
+}
+
+function getTargetMB() {
+  let v = +vtarget.value;
+  if (!v || v < 25) v = 25;
+  if (v > 3072) v = 3072;
+  return v;
+}
+
+document.querySelectorAll("#vpresets button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#vpresets button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    vtarget.value = btn.dataset.mb;
+  };
+});
+
+vfile.addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (!f.type.startsWith("video/")) {
+    vShowError("الملف المختار ليس فيديو.");
+    return;
+  }
+  if (f.size > MAX_INPUT) {
+    vShowError("حجم الفيديو أكبر من 3 GB، وهذا الحد الأقصى للأداة.");
+    return;
+  }
+  videoFile = f;
+  videoName = f.name.replace(/\.[^.]+$/, "");
+  const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+  vinfo.innerHTML = `حجم الفيديو الأصلي: ${sizeMB} MB<br>الخطوة 2: اختر الحجم المطلوب ثم اضغط "ضغط الفيديو"`;
+  vgo.disabled = false;
+});
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = res;
+    s.onerror = () => rej(new Error("script"));
+    document.head.appendChild(s);
+  });
+}
+
+// تحميل مكتبة FFmpeg عند أول استخدام فقط، مع تجربة أكثر من خادم في حال تعذّر أحدها
+// نسخة core-st أحادية الخيط لا تحتاج SharedArrayBuffer (وهي سبب الخطأ على الصفحات المستضافة بشكل عادي)
+const FF_CDNS = [
+  { lib: "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js",
+    core: "https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.11.0/dist/ffmpeg-core.js" },
+  { lib: "https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js",
+    core: "https://unpkg.com/@ffmpeg/core-st@0.11.0/dist/ffmpeg-core.js" }
+];
+
+async function getFFmpeg() {
+  if (ffmpegInstance) return ffmpegInstance;
+  let lastErr = null;
+  for (const cdn of FF_CDNS) {
+    try {
+      if (!window.FFmpeg) await loadScript(cdn.lib);
+      ffmpegInstance = FFmpeg.createFFmpeg({ log: false, corePath: cdn.core });
+      await ffmpegInstance.load();
+      return ffmpegInstance;
+    } catch (e) {
+      lastErr = e;
+      ffmpegInstance = null;
+    }
+  }
+  throw new Error("تعذّر تحميل المحرك من الإنترنت (" + (lastErr && lastErr.message || "خطأ شبكة") + ")");
+}
+
+function getDuration(file) {
+  return new Promise((res, rej) => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.onloadedmetadata = () => {
+      const d = v.duration;
+      URL.revokeObjectURL(v.src);
+      res(d);
+    };
+    v.onerror = () => rej(new Error("meta"));
+    v.src = URL.createObjectURL(file);
+  });
+}
+
+vgo.onclick = async () => {
+  if (!videoFile) return;
+  vgo.disabled = true;
+  try {
+    const targetMB = getTargetMB();
+    vinfo.textContent = "جارٍ تجهيز المحرك... (أول مرة فقط وقد يأخذ دقيقة)";
+    const ff = await getFFmpeg();
+    const { fetchFile } = FFmpeg;
+
+    const duration = await getDuration(videoFile);
+    if (!duration || !isFinite(duration)) throw new Error("duration");
+
+    // حساب معدل البت: الحجم المطلوب بالكيلوبت مقسوماً على المدة بالثواني
+    const totalKbps = (targetMB * 1024 * 8) / duration;
+    const audioKbps = 96;
+    const videoKbps = Math.max(100, Math.floor(totalKbps - audioKbps));
+
+    ff.setProgress(({ ratio }) => {
+      const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+      vinfo.textContent = `جارٍ الضغط... ${pct}%`;
+    });
+
+    ff.FS("writeFile", "input.mp4", await fetchFile(videoFile));
+    await ff.run(
+      "-i", "input.mp4",
+      "-c:v", "libx264",
+      "-b:v", `${videoKbps}k`,
+      "-maxrate", `${videoKbps}k`,
+      "-bufsize", `${videoKbps * 2}k`,
+      "-preset", "veryfast",
+      "-c:a", "aac",
+      "-b:a", `${audioKbps}k`,
+      "-movflags", "+faststart",
+      "output.mp4"
+    );
+
+    const data = ff.FS("readFile", "output.mp4");
+    ff.FS("unlink", "input.mp4");
+    ff.FS("unlink", "output.mp4");
+
+    const blob = new Blob([data.buffer], { type: "video/mp4" });
+    const url = URL.createObjectURL(blob);
+    const outMB = (blob.size / 1024 / 1024).toFixed(1);
+    const okText = blob.size <= targetMB * 1024 * 1024
+      ? "✅"
+      : "⚠️ الحجم أكبر قليلاً من المطلوب";
+
+    vinfo.innerHTML = `الحجم الناتج: ${outMB} MB ${okText}`;
+    vpreview.src = url;
+    vpreview.hidden = false;
+    vdl.href = url;
+    vdl.download = `${videoName}-${targetMB}mb.mp4`;
+    vdl.hidden = false;
+  } catch (err) {
+    console.error(err);
+    const msg = err && err.message ? err.message : "خطأ غير معروف";
+    const hint = location.protocol === "https:"
+      ? "أرسل لي هذا النص إن استمرت المشكلة."
+      : "هذه الصفحة مفتوحة من ملف محلي، والمتصفح يمنع تحميل المحرك من هذا الوضع. انشر الصفحة على Netlify وافتح الرابط الناتج (يبدأ بـ https) ثم جرّب مجدداً.";
+    vShowError("تعذّر ضغط الفيديو: " + msg + ". " + hint);
+  } finally {
+    vgo.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
